@@ -3,8 +3,6 @@ import 'dart:async';
 
 import 'package:flutter_esp_ble_prov/flutter_esp_ble_prov.dart';
 
-
-
 class ProvisioningScreen extends StatefulWidget {
   const ProvisioningScreen({super.key});
 
@@ -28,11 +26,16 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
   final prefixController = TextEditingController(text: 'PROV_');
   final proofOfPossessionController = TextEditingController(text: 'abcd1234');
   final passphraseController = TextEditingController();
+  final manualWifiNameController = TextEditingController();
 
   Future scanBleDevices() async {
     final prefix = prefixController.text;
-    final scannedDevices =
-    await _flutterEspBleProvPlugin.scanBleDevices(prefix);
+    setState(() {
+      devices = []; // Clear the devices array before scanning
+      devices.clear();
+    });
+    final scannedDevices = await _flutterEspBleProvPlugin.scanBleDevices(prefix);
+    print("these are scaned devbices ${scannedDevices}");
     setState(() {
       devices = scannedDevices;
     });
@@ -40,6 +43,10 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
   }
 
   Future scanWifiNetworks() async {
+    if (selectedDeviceName.isEmpty) {
+      pushFeedback('Error: No device selected');
+      return;
+    }
     final proofOfPossession = proofOfPossessionController.text;
     final scannedNetworks = await _flutterEspBleProvPlugin.scanWifiNetworks(
         selectedDeviceName, proofOfPossession);
@@ -50,12 +57,15 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
   }
 
   Future provisionWifi() async {
+    if (selectedDeviceName.isEmpty || selectedSsid.isEmpty) {
+      pushFeedback('Error: No device or network selected');
+      return;
+    }
     final proofOfPossession = proofOfPossessionController.text;
     final passphrase = passphraseController.text;
     await _flutterEspBleProvPlugin.provisionWifi(
         selectedDeviceName, proofOfPossession, selectedSsid, passphrase);
-    pushFeedback(
-        'Success: provisioned WiFi $selectedDeviceName on $selectedSsid');
+    pushFeedback('Success: provisioned WiFi $selectedDeviceName on $selectedSsid');
   }
 
   pushFeedback(String msg) {
@@ -71,11 +81,19 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
         appBar: AppBar(
           title: const Text('ESP BLE Provisioning Example'),
           actions: [
+            // Refresh Button in AppBar
             IconButton(
-                icon: const Icon(Icons.bluetooth),
-                onPressed: () async {
-                  await scanBleDevices();
-                }),
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                setState(() {
+                  devices.clear(); // Clear the devices array
+                  networks.clear(); // Clear the networks array
+                  selectedDeviceName = ''; // Reset selected device
+                  selectedSsid = ''; // Reset selected SSID
+                });
+                pushFeedback('Cleared devices and networks');
+              },
+            ),
           ],
         ),
         bottomSheet: SafeArea(
@@ -83,50 +101,45 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
             width: double.infinity,
             color: Colors.black87,
             padding: EdgeInsets.all(defaultPadding),
-            child: Text(
-              feedbackMessage,
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.green.shade600),
+            child: SingleChildScrollView(
+              child: Text(
+                feedbackMessage,
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.green.shade600),
+              ),
             ),
           ),
         ),
         body: SafeArea(
-          child: Container(
-            padding: EdgeInsets.all(defaultPadding),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Flexible(
-                  child: Container(
-                    padding: EdgeInsets.all(defaultPadding),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Flexible(
-                          child: Text('Device Prefix'),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: prefixController,
-                            decoration: const InputDecoration(
-                                hintText: 'enter device prefix'),
-                          ),
-                        ),
-                      ],
+          child: SingleChildScrollView(
+            child: Container(
+              padding: EdgeInsets.all(defaultPadding),
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: prefixController,
+                    decoration: const InputDecoration(
+                      labelText: 'Device Prefix',
+                      hintText: 'Enter device prefix',
                     ),
                   ),
-                ),
-                Flexible(
-                  child: Container(
-                    padding: EdgeInsets.all(defaultPadding),
-                    child: const Text('BLE devices'),
+                  SizedBox(height: defaultPadding),
+                  ElevatedButton(
+                    onPressed: scanBleDevices,
+                    child: const Text('Scan BLE Devices'),
                   ),
-                ),
-                Expanded(
-                  child: ListView.builder(
+                  SizedBox(height: defaultPadding),
+                  const Text(
+                    'BLE Devices',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: defaultPadding),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: devices.length,
                     itemBuilder: (context, i) {
                       return ListTile(
@@ -137,43 +150,37 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        onTap: () async {
-                          selectedDeviceName = devices[i];
-                          await scanWifiNetworks();
+                        onTap: () {
+                          setState(() {
+                            selectedDeviceName = devices[i];
+                          });
+                          pushFeedback('Selected device: $selectedDeviceName');
                         },
                       );
                     },
                   ),
-                ),
-                Flexible(
-                  child: Container(
-                    padding: EdgeInsets.all(defaultPadding),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Flexible(
-                          child: Text('Proof of possession'),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: proofOfPossessionController,
-                            decoration: const InputDecoration(
-                                hintText: 'enter proof of possession string'),
-                          ),
-                        ),
-                      ],
+                  SizedBox(height: defaultPadding),
+                  TextField(
+                    controller: proofOfPossessionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Proof of Possession',
+                      hintText: 'Enter proof of possession string',
                     ),
                   ),
-                ),
-                Flexible(
-                  child: Container(
-                    padding: EdgeInsets.all(defaultPadding),
-                    child: const Text('WiFi networks'),
+                  SizedBox(height: defaultPadding),
+                  ElevatedButton(
+                    onPressed: scanWifiNetworks,
+                    child: const Text('Scan Wi-Fi Networks'),
                   ),
-                ),
-                Expanded(
-                  child: ListView.builder(
+                  SizedBox(height: defaultPadding),
+                  const Text(
+                    'Wi-Fi Networks',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: defaultPadding),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: networks.length,
                     itemBuilder: (context, i) {
                       return ListTile(
@@ -184,37 +191,45 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        onTap: () async {
-                          selectedSsid = networks[i];
-                          await provisionWifi();
+                        onTap: () {
+                          setState(() {
+                            selectedSsid = networks[i];
+                          });
+                          pushFeedback('Selected network: $selectedSsid');
                         },
                       );
                     },
                   ),
-                ),
-                Flexible(
-                  child: Container(
-                    padding: EdgeInsets.all(defaultPadding),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Flexible(
-                          child: Text('WiFi Passphrase'),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: passphraseController,
-                            decoration: const InputDecoration(
-                                hintText: 'enter passphrase'),
-                            obscureText: true,
-                          ),
-                        ),
-                      ],
+                  SizedBox(height: defaultPadding),
+                  // Manual Wi-Fi Name Input Field
+                  TextField(
+                    controller: manualWifiNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Manual Wi-Fi Name (SSID)',
+                      hintText: 'Enter Wi-Fi name if not detected',
                     ),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedSsid = value; // Update selectedSsid with manual input
+                      });
+                    },
                   ),
-                ),
-              ],
+                  SizedBox(height: defaultPadding),
+                  TextField(
+                    controller: passphraseController,
+                    decoration: const InputDecoration(
+                      labelText: 'Wi-Fi Passphrase',
+                      hintText: 'Enter passphrase',
+                    ),
+                    obscureText: true,
+                  ),
+                  SizedBox(height: defaultPadding),
+                  ElevatedButton(
+                    onPressed: provisionWifi,
+                    child: const Text('Provision Wi-Fi'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -222,5 +237,3 @@ class _ProvisioningScreenState extends State<ProvisioningScreen> {
     );
   }
 }
-
-
